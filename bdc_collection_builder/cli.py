@@ -13,15 +13,41 @@ Creates a python click context and inject it to the global flask commands.
 
 import click
 from bdc_catalog.cli import cli
-from flask.cli import FlaskGroup
+from flask.cli import FlaskGroup, with_appcontext
 
 from . import create_app
+from .config import Config
 
 
-# Create bdc-collection-builder cli from bdc-db
 @click.group(cls=FlaskGroup, create_app=create_app)
 def cli():
     """Command line for Collection Builder."""
+
+
+@cli.command(context_settings=dict(
+    ignore_unknown_options=True,
+    allow_extra_args=True,
+))
+@with_appcontext
+@click.pass_context
+def beat(ctx: click.Context):
+    """Run cube builder worker and make it available to execute data cube tasks.
+
+    Uses celery default variables
+    """
+    from celery.bin.celery import main as _main
+
+    from .celery import worker
+
+    # TODO: Retrieve dynamically
+    worker_context = '{}:celery'.format(worker.__name__)
+
+    args = ["celery", "beat", "-A", worker_context]
+    args.extend(ctx.args)
+    if "-S" not in ctx.args:
+        args.extend(["-S", "celery_sqlalchemy_scheduler.schedulers:DatabaseScheduler"])
+
+    _main(args)
 
 
 def main(as_module=False):

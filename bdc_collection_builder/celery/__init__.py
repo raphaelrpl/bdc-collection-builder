@@ -37,8 +37,10 @@ def create_celery_app(flask_app: Flask):
     """
     celery = Celery(
         flask_app.import_name,
-        broker=Config.RABBIT_MQ_URL
+        broker=Config.RABBIT_MQ_URL,
     )
+
+    celery.conf.update(beat_dburi=Config.SQLALCHEMY_DATABASE_URI)
 
     # Load tasks
     celery.autodiscover_tasks(CELERY_TASKS)

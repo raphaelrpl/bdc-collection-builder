@@ -23,7 +23,7 @@ from celery import current_app, current_task
 from celery.backends.database import Task
 from flask import current_app as flask_app
 
-from ..collections.models import RadcorActivity, RadcorActivityHistory
+from ..collections.models import RadcorActivity, RadcorActivityHistory, DataSynchronizer
 from ..collections.utils import (get_or_create_model, get_provider,
                                  is_valid_compressed_file, post_processing)
 from ..config import Config
@@ -481,3 +481,43 @@ def harmonization(activity: dict, collection_id=None, **kwargs):
     activity['args']['file'] = target_dir
 
     return activity
+
+
+@current_app.task(queue=Config.QUEUE_TASK_SCHEDULER_NAME)
+def data_sync(*args, periodic_task_id=None, **kwargs):
+    from random import randint
+    from ..controller import RadcorBusiness
+    from ..collections.models import RadcorActivity, RadcorActivityHistory
+
+    if periodic_task_id is None:
+        raise RuntimeError('Missing periodic_task_id')
+
+    synchronizer = DataSynchronizer.get_from_periodic_task(entry_id=periodic_task_id)
+
+    logging.info(f'Starting Synchronizer ({synchronizer.name})')
+
+    start_date = synchronizer.start_from or datetime.now().replace(minute=0, hour=0, microsecond=0, second=0)
+    end_date = start_date.replace(minute=0, hour=0, microsecond=0, second=0)
+    kwargs['start'] = start_date
+    kwargs['end'] = end_date
+
+    tasks_order = kwargs.pop('tasks', [])
+    scenes = RadcorBusiness.get_scenes_meta(**kwargs)
+
+    # Verificar se esta rodando ou processando
+    scene_ids = [scene.scene_id for scene in scenes]
+
+
+    activities = RadcorActivity.get_scenes(scene_ids)
+    for activity in activities:
+        children = activity.children
+        if activity.is_running or activity.enqueued:
+            continue
+
+        # Do
+
+    # disparar so os que nao foi feito
+
+    logging.info(f'Found {len(scenes)} to be processed. Triggering')
+
+    return list(range(randint(1, 100)))

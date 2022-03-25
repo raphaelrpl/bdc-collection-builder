@@ -59,15 +59,16 @@ install_requires = [
     'Flask>=1.1,<2',
     'marshmallow-sqlalchemy>=0.19.0,<0.25',
     'rasterio>=1.1.2,<1.2',
-    'rio-cogeo>=1.1,<2',
+    'rio-cogeo>=3,<4',
     'numpy>=1.17.2',
     'numpngw>=0.0.8',
     'scikit-image>=0.16.2',
     'SQLAlchemy[postgresql_psycopg2binary]>=1.3,<1.4',
-    'bdc-collectors @ git+git://github.com/brazil-data-cube/bdc-collectors.git@master#egg=bdc-collectors',
+    'bdc-collectors @ git+https://github.com/brazil-data-cube/bdc-collectors.git@master#egg=bdc-collectors',
     'celery[librabbitmq]>=4.3,<4.4.3',
     'python-dateutil>=2,<3',
-    'shapely>=1.7,<2'
+    'shapely>=1.7,<2',
+    'pytz'
 ]
 
 packages = find_packages()

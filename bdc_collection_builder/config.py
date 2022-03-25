@@ -78,6 +78,11 @@ class Config:
     # The optional directory where published collections will be stored (Default is DATA_DIR)
     PUBLISH_DATA_DIR = os.environ.get('PUBLISH_DATA_DIR', DATA_DIR)
 
+    QUEUE_TASK_SCHEDULER_NAME = os.getenv('QUEUE_TASK_SCHEDULER_NAME')
+    QUEUE_TASK_DOWNLOAD_NAME = os.getenv('QUEUE_TASK_DOWNLOAD_NAME', 'download')
+    QUEUE_TASK_PROCESSOR_NAME = os.getenv('QUEUE_TASK_PROCESSOR_NAME', 'correction')
+    QUEUE_TASK_PUBLISH_NAME = os.getenv('QUEUE_TASK_PUBLISH_NAME', 'publish')
+
     TASK_RETRY_DELAY = int(os.environ.get('TASK_RETRY_DELAY', 60 * 60))  # a hour
 
     CELERYD_PREFETCH_MULTIPLIER = int(os.environ.get('CELERYD_PREFETCH_MULTIPLIER', 4))  # disable

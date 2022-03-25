@@ -218,3 +218,12 @@ def list_providers():
     catalogs = RadcorBusiness.list_catalogs()
 
     return jsonify(catalogs), 200
+
+
+@bp.route('/synchronizers', methods=('POST',))
+def create_synchronizer():
+    data = request.json
+
+    entry = RadcorBusiness.create_synchronizer(**data)
+
+    return entry

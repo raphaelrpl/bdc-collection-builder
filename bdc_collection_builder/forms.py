@@ -11,13 +11,13 @@
 
 # 3rdparty
 from bdc_catalog.models import Collection, Item, db
-from marshmallow import (Schema, ValidationError, fields, post_load, pre_load,
-                         validates_schema)
+from marshmallow import (Schema, ValidationError, fields,
+                         post_load, validates_schema)
 from marshmallow.validate import OneOf
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 
 # Builder
-from .collections.models import RadcorActivity, RadcorActivityHistory
+from .collections.models import DataSynchronizer, RadcorActivity, RadcorActivityHistory
 
 
 class TaskSchema(Schema):
@@ -193,3 +193,13 @@ class CheckScenesForm(Schema):
 
         if 'grid' not in data and 'tiles' not in data and 'bbox' not in data:
             raise ValidationError('Missing "tiles"/"grid" or "bbox". Please refer one of.')
+
+
+class DataSynchronizerForm(SQLAlchemyAutoSchema):
+    name = fields.String(dump_only=True)
+    description = fields.String(dump_only=True)
+    schedule = fields.String(dump_only=True)
+    start_time = fields.DateTime(dump_only=True)
+
+    class Meta:
+        model = DataSynchronizer

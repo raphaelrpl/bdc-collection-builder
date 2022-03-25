@@ -8,13 +8,24 @@
 
 """Models for Collection Builder."""
 
+import json
+from copy import deepcopy
+from datetime import datetime
+from typing import List, Union
+
 from bdc_catalog.models import Collection
 from bdc_catalog.models.base_sql import BaseModel, db
+from celery import states
 from celery.backends.database import Task
+from celery_sqlalchemy_scheduler.models import PeriodicTask, CrontabSchedule
 from sqlalchemy import (ARRAY, JSON, Column, DateTime, ForeignKey, Integer,
-                        PrimaryKeyConstraint, String, UniqueConstraint)
+                        PrimaryKeyConstraint, String, UniqueConstraint,
+                        func)
+from sqlalchemy.dialects.postgresql import TIMESTAMP
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
+from .utils import get_or_create_model
 from ..config import Config
 
 db.metadata.schema = Config.ACTIVITIES_SCHEMA
@@ -35,6 +46,7 @@ class RadcorActivity(BaseModel):
     tags = Column('tags', ARRAY(String))
     scene_type = Column('scene_type', String)
     sceneid = Column('sceneid', String(255), nullable=False)
+    # sensing_date = Column(TIMESTAMP(timezone=True), nullable=False)
 
     # Relations
     collection = relationship('Collection')
@@ -47,6 +59,13 @@ class RadcorActivity(BaseModel):
         UniqueConstraint(collection_id, activity_type, sceneid),
         dict(schema=Config.ACTIVITIES_SCHEMA),
     )
+
+    @classmethod
+    def get_scenes(cls, scenes: List[str]) -> List['RadcorActivity']:
+        return cls.query().filter(RadcorActivity.sceneid.in_(scenes)).all()
+
+    def failed_tasks(self) -> List['RadcorActivityHistory']:
+        return db.session.query(RadcorActivityHistory).filter(RadcorActivityHistory.is_failed).all()
 
 
 class ActivitySRC(BaseModel):
@@ -100,3 +119,90 @@ class RadcorActivityHistory(BaseModel):
     def get_by_task_id(cls, task_id: str):
         """Retrieve a task execution from celery task id."""
         return cls.query().filter(cls.task.has(task_id=task_id)).one()
+
+    @hybrid_property
+    def status(self) -> str:
+        return self.task.status
+
+    @hybrid_property
+    def is_running(self) -> bool:
+        return self.status == states.STARTED  # and in celery worker
+
+    @hybrid_property
+    def is_pending(self) -> bool:
+        return self.status == states.PENDING
+
+    @hybrid_property
+    def is_failed(self) -> bool:
+        return self.status == states.FAILURE
+
+
+
+class DataSynchronizer(BaseModel):
+    """Represent the model for data synchronization as task-like."""
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(ForeignKey(Collection.id, onupdate='CASCADE', ondelete='CASCADE'),
+                           primary_key=True, nullable=False)
+    schedule_id = Column(ForeignKey(PeriodicTask.id, onupdate='CASCADE', ondelete='CASCADE'),
+                         primary_key=True, nullable=False)
+    start_from = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, server_default=func.now(),
+                        nullable=False)
+
+    collection = relationship(Collection, lazy='select')
+    scheduler = relationship(PeriodicTask)
+
+    def __init__(self, collection: Union[int, Collection] = None, name: str = None, start_from=None, **task_kwargs):
+        instance = None
+        if name is not None:
+            instance = self._get_scheduler(name, **task_kwargs)
+
+        super(DataSynchronizer, self).__init__(collection=collection, scheduler=instance, start_from=start_from)
+
+    def _get_scheduler(self, name: str, crontab=None, **kwargs):
+        copy_kwargs = deepcopy(kwargs)
+        if crontab is not None:
+            copy_kwargs['crontab'] = CrontabSchedule(**crontab)
+
+        args = copy_kwargs.get('args', [])
+        kargs = copy_kwargs.get('kwargs', {})
+        copy_kwargs['kwargs'] = json.dumps(kargs)
+        copy_kwargs['args'] = json.dumps(args)
+
+        instance, created = get_or_create_model(PeriodicTask, defaults=copy_kwargs, engine=db, name=name)
+        return instance
+
+    @hybrid_property
+    def name(self) -> str:
+        return self.scheduler.name
+
+    @classmethod
+    def list_synchronizers(cls, enabled: bool = True, expired: bool = False) -> List['DataSynchronizer']:
+        where = [cls.scheduler.has(PeriodicTask.enabled.is_(enabled))]
+        if expired:
+            where.append(cls.scheduler.has(PeriodicTask.expires <= datetime.now()))
+        return cls.filter(*where)
+
+    @classmethod
+    def get_from_periodic_task(cls, entry_id: int = None, entry_name: str = None) -> 'DataSynchronizer':
+        if entry_id is None and entry_name is None:
+            raise RuntimeError('Periodic Task Id or Name is required.')
+        where = []
+        if entry_id:
+            where.append(PeriodicTask.id == entry_id)
+        if entry_name:
+            where.append(PeriodicTask.name == entry_name)
+        return cls.query().filter(*where).first_or_404(f'Synchronizer {entry_id}, {entry_name} not found')
+
+    def is_running(self) -> bool:
+        # Search in celery
+        return False
+
+
+# class DataSynchronizerLog(BaseModel):
+#     id = Column(Integer, primary_key=True)
+#     synchronizer_id = Column(ForeignKey(DataSynchronizer.id, onupdate='CASCADE', ondelete='CASCADE'),
+#                              primary_key=True, nullable=False)
+#     total_dispatched = Column(Integer, nullable=True)
+#
+#     synchronizer = relationship(Collection, lazy='select')
