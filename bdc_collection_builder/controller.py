@@ -9,9 +9,7 @@
 """Define base interface for Celery Tasks."""
 
 # Python Native
-import concurrent.futures
 import json
-import os
 from datetime import datetime, timedelta
 
 # 3rdparty
@@ -26,10 +24,10 @@ from werkzeug.exceptions import BadRequest, abort
 
 # Builder
 from .celery.tasks import correction, download, harmonization, post, publish
-from .collections.models import (ActivitySRC, DataSynchronizer, RadcorActivity,
+from .collections.models import (ActivitySRC, RadcorActivity,
                                  RadcorActivityHistory, db)
-from .collections.utils import get_or_create_model, get_provider
-from .forms import CollectionForm, RadcorActivityForm, SimpleActivityForm, DataSynchronizerForm
+from .collections.utils import get_or_create_model, get_provider, safe_request
+from .forms import CollectionForm, RadcorActivityForm, SimpleActivityForm
 
 
 def _generate_periods(start_date: datetime, end_date: datetime, unit='m'):
@@ -247,11 +245,42 @@ class RadcorBusiness:
             options['bbox'] = bbox
 
         try:
-            result = cls.get_scenes_meta(dataset=args['dataset'],
-                                         catalog=args['catalog'], catalog_args=args['catalog_args'],
-                                         start=args['start'], end=args['end'],
-                                         scenes=args.get('scenes'), tiles=args.get('tiles'), cloud=args.get('cloud'),
-                                         **options)
+            catalog_provider, provider = get_provider(catalog=args['catalog'], **catalog_args)
+
+            with safe_request():
+                if 'scenes' in args:
+                    result = []
+
+                    unique_scenes = set(args['scenes'])
+
+                    for scene in unique_scenes:
+                        query_result = provider.search(
+                            query=args['dataset'],
+                            filename=f'{scene}*',
+                            **options
+                        )
+
+                        result.extend(query_result)
+                elif 'tiles' in args:
+                    result = []
+                    for tile in args['tiles']:
+                        query_result = provider.search(
+                            query=args['dataset'],
+                            tile=tile,
+                            start_date=args['start'],
+                            end_date=args['end'],
+                            cloud_cover=cloud,
+                            **options
+                        )
+                        result.extend(query_result)
+                else:
+                    result = provider.search(
+                        query=args['dataset'],
+                        start_date=args['start'],
+                        end_date=args['end'],
+                        cloud_cover=cloud,
+                        **options
+                    )
 
             def _recursive(scene, task, parent=None, parallel=True, pass_args=True):
                 """Create task dispatcher recursive."""
@@ -646,74 +675,3 @@ class RadcorBusiness:
         tasks = DataSynchronizer.list_synchronizers(**kwargs)
 
         return DataSynchronizerForm().dumps(tasks, many=True)
-
-    @classmethod
-    def get_scenes_meta(cls, dataset: str, catalog: str, catalog_args=None, start=None, end=None,
-                        scenes=None, tiles=None, cloud=None, **options):
-        catalog_provider, provider = get_provider(catalog=catalog, **(catalog_args or {}))
-
-        if scenes or tiles:
-            entries = set(scenes or tiles)
-            is_tile = tiles is not None
-            with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-                tasks = []
-                opts = dict(
-                    query=dataset,
-                    **options
-                )
-                if is_tile:
-                    opts.update(query=dataset, start_date=start, end_date=end, cloud_cover=cloud)
-
-                result = provider.search(**opts,
-                                         area='wkt')
-
-                # for entry in entries:
-                #     if is_tile:
-                #         opts['tile'] = entry
-                #     else:
-                #         opts['filename'] = f'{entry}*',
-                #     task = executor.submit(provider.search, **opts)
-                #     tasks.append(task)
-                #
-                # result = []
-                # for task in concurrent.futures.as_completed(tasks):
-                #     if task.exception():
-                #         pass
-                #     else:
-                #         found_scenes = task.result()
-                #         result.extend(found_scenes)
-
-        # if scenes:
-        #     result = []
-        #
-        #     unique_scenes = set(scenes)
-        #
-        #     for scene in unique_scenes:
-        #         query_result = provider.search(
-        #             query=dataset,
-        #             filename=f'{scene}*',
-        #             **options
-        #         )
-        #
-        #         result.extend(query_result)
-        # elif tiles:
-        #     result = []
-        #     for tile in tiles:
-        #         query_result = provider.search(
-        #             query=dataset,
-        #             tile=tile,
-        #             start_date=start,
-        #             end_date=end,
-        #             cloud_cover=cloud,
-        #             **options
-        #         )
-        #         result.extend(query_result)
-        else:
-            result = provider.search(
-                query=dataset,
-                start_date=start,
-                end_date=end,
-                cloud_cover=cloud,
-                **options
-            )
-        return result
