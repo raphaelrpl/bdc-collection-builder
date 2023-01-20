@@ -17,6 +17,7 @@
 #
 
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -90,3 +91,30 @@ def sen2cor(scene_id: str, input_dir: str, output_dir: str,
             return out
 
     raise RuntimeError(f'Could not execute Sen2Cor using {versions_supported} - {err}')
+
+
+def s1_preprocessor(scene_id: str, input_dir: str, output_dir: str, **env) -> Path:
+    auxiliaries = Config.SENTINEL_TOOLBOX['S1_PROCESSOR_AUX_DIR'].split(',')
+    args = [
+        'docker', 'run', '--rm', '-i',
+        '--name', f's1-{scene_id}',
+        '-v', f'{input_dir}:{Config.SENTINEL_TOOLBOX["S1_PROCESSOR_MOUNT_CONTAINER_SOURCE_DIR"]}',
+        '-v', f'{output_dir}:{Config.SENTINEL_TOOLBOX["S1_PROCESSOR_MOUNT_CONTAINER_OUTPUT_DIR"]}',
+        *auxiliaries,
+        Config.SENTINEL_TOOLBOX['S1_PROCESSOR_DOCKER_IMAGE'],
+        f'{scene_id}.zip'
+    ]
+    process = subprocess.Popen(args, env=env, stdin=subprocess.PIPE)
+    process.wait()
+    if process.returncode != 0:
+        raise RuntimeError(f'Could not execute Sen2Cor using ')
+
+    # Base dir? or folder inside output dir
+    files = list(Path(output_dir).glob('*.tif'))
+    if len(files) >= 1:
+        output_dir = Path(output_dir) / scene_id
+        output_dir.mkdir(exist_ok=True, parents=True)
+        for entry in files:
+            shutil.move(entry, output_dir)
+
+    return Path(output_dir)

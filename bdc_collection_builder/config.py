@@ -55,6 +55,12 @@ class Config:
         SEN2COR_AUX_DIR=os.getenv('SEN2COR_AUX_DIR', '/data/auxiliaries/sen2cor/CCI4SEN2COR'),
         SEN2COR_CONFIG_DIR=os.getenv('SEN2COR_CONFIG_DIR', '/data/auxiliaries/sen2cor/config/2.8'),
     )
+    SENTINEL_TOOLBOX = dict(
+        S1_PROCESSOR_DOCKER_IMAGE=os.getenv('S1_PROCESSOR_DOCKER_IMAGE', 'registry.dpi.inpe.br/brazil-data-cube/s1-preprocess:1.0.0'),
+        S1_PROCESSOR_AUX_DIR=os.getenv('S1_PROCESSOR_AUX_DIR', ''),
+        S1_PROCESSOR_MOUNT_CONTAINER_SOURCE_DIR=os.getenv('S1_PROCESSOR_MOUNT_CONTAINER_SOURCE_DIR', '/mnt/input-dir'),
+        S1_PROCESSOR_MOUNT_CONTAINER_OUTPUT_DIR=os.getenv('S1_PROCESSOR_MOUNT_CONTAINER_OUTPUT_DIR', '/mnt/output-dir')
+    )
     # The working directory for ATM Correction. Default is None.
     CONTAINER_WORKDIR = os.getenv('CONTAINER_WORKDIR', None)
     WORKING_DIR = os.getenv('WORKING_DIR', tempfile.gettempdir())

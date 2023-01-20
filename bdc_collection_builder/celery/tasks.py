@@ -316,6 +316,9 @@ def correction(activity: dict, collection_id=None, **kwargs):
                             docker_container_work_dir=container_workdir.split(' '), **env)
 
                     logging.info(f'Using {entry} of sceneid {scene_id}')
+                elif processor_name.lower() == 's1-preprocessor':
+                    from ..collections.processor import s1_preprocessor
+                    output_path = s1_preprocessor(scene_id, input_dir=str(tmp), output_dir=env['OUTDIR'], **env)
                 else:
                     lasrc_conf = Config.LASRC_CONFIG
 
